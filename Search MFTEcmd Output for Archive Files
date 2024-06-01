@@ -1,0 +1,22 @@
+# Specify the path to your parsed MFT CSV file
+$MFTFile = "Path\To\mftecmd_output.csv"
+
+# Specify the path for the output CSV file
+$OutputFile = "Path\To\Output\filtered_mft_archive_files.csv"
+
+# Define the archive file extensions to search for
+$archiveExtensions = @('.zip', '.zipx', '.rar', '.7z', '.tar', '.tgz', '.tbz2', '.txz', '.gz', '.bz2', '.xz', '.cab', '.iso', '.lz', '.lzma', '.lzo', '.z', '.zst', '.arc', '.arj', '.ace', '.jar', '.pak', '.dmg', '.sfx')
+
+# Import the MFT CSV file
+$MFTEntries = Import-Csv -Path $MFTFile
+
+# Filter the entries for archive files
+$filteredEntries = $MFTEntries | Where-Object {
+    $extension = [System.IO.Path]::GetExtension($_.FileName)
+    $archiveExtensions -contains $extension
+} | Select-Object FileName, Created0x10, ParentPath
+
+# Export the filtered entries to a new CSV file
+$filteredEntries | Export-Csv -Path $OutputFile -NoTypeInformation
+
+Write-Output "Filtered entries have been exported to $OutputFile"
