@@ -1,0 +1,25 @@
+# Specify the path to your parsed USN Journal CSV file produced by MFTECmd
+$USNJournalFile = "Path\To\USNJournal.csv"
+
+# Define the archive file extensions to search for
+$archiveExtensions = @('.zip', '.zipx', '.rar', '.7z', '.tar', '.tgz', '.tbz2', '.txz', '.gz', '.bz2', '.xz', '.cab', '.iso', '.lz', '.lzma', '.lzo', '.z', '.zst', '.arc', '.arj', '.ace', '.jar', '.pak', '.dmg', '.sfx')
+
+# Define the update reason to look for
+$deleteReason = "FileDelete"
+
+# Import the USN Journal CSV file
+$USNEntries = Import-Csv -Path $USNJournalFile
+
+# Filter the entries for delete-related reasons and archive file extensions
+$filteredEntries = $USNEntries | Where-Object {
+    $extension = [System.IO.Path]::GetExtension($_.Name)
+    ($_.UpdateReasons -match $deleteReason) -and ($archiveExtensions -contains $extension)
+} | Select-Object Name, UpdateReasons, UpdateTimestamp
+
+# Specify the path for the output CSV file
+$OutputFile = "Path\To\Output.csv"
+
+# Export the filtered entries to a new CSV file
+$filteredEntries | Export-Csv -Path $OutputFile -NoTypeInformation
+
+Write-Output "Filtered entries have been exported to $OutputFile"
