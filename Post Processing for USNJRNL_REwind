@@ -2,10 +2,10 @@
 Finds deleted archives - post processing of USNJRNL_Rewind
 ############################################################
 # Define the path to the input CSV file
-$inputCsvPath = "C:\Users\Dennis\Downloads\38218\usnjrnl_rewind-main\rewind_out\USNJRNL.fullPaths.csv"
+$inputCsvPath = "USNJRNL.fullpaths.csv"
 
 # Define the path to the output CSV file
-$outputCsvPath = "C:\Users\Dennis\Downloads\38218\usnjrnl_rewind-main\rewind_out\filtered_results.csv"
+$outputCsvPath = "filtered_results.csv"
 
 # Import the CSV file
 $data = Import-Csv -Path $inputCsvPath
