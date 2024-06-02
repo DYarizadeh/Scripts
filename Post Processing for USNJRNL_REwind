@@ -1,0 +1,29 @@
+############################################################
+Finds deleted archives - post processing of USNJRNL_Rewind
+############################################################
+# Define the path to the input CSV file
+$inputCsvPath = "C:\Users\Dennis\Downloads\38218\usnjrnl_rewind-main\rewind_out\USNJRNL.fullPaths.csv"
+
+# Define the path to the output CSV file
+$outputCsvPath = "C:\Users\Dennis\Downloads\38218\usnjrnl_rewind-main\rewind_out\filtered_results.csv"
+
+# Import the CSV file
+$data = Import-Csv -Path $inputCsvPath
+
+# Define the search patterns
+$updateReasonsPattern = "Delete"
+$extensionPatterns = @('.zip', '.zipx', '.rar', '.7z', '.tar', '.tgz', '.tbz2', '.txz', '.gz', '.bz2', '.xz', '.cab', '.iso', '.lz', '.lzma', '.lzo', '.z', '.zst', '.arc', '.arj', '.ace', '.jar', '.pak', '.dmg', '.sfx')
+
+# Filter the data based on the criteria
+$filteredData = $data | Where-Object {
+    $_.UpdateReasons -match $updateReasonsPattern -and
+    $extensionPatterns -contains $_.Extension
+}
+
+# Select only the required columns
+$selectedData = $filteredData | Select-Object UpdateTimestamp, ParentPath, Name, UpdateReasons, Extension, FileAttributes
+
+# Export the filtered data to a new CSV file
+$selectedData | Export-Csv -Path $outputCsvPath -NoTypeInformation
+
+Write-Output "Filtered data has been exported to $outputCsvPath"
