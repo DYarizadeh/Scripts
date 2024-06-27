@@ -1,38 +1,35 @@
-# Path to the folder containing the files to search
-$folderPath = "file_path"
+# Define the directory to search and the list of strings to search for
+$directoryPath = "C:\Path\To\Your\Directory"
+$searchStrings = @("string1", "string2", "string3") # Add your search strings here
 
-# List of strings to search for
-$searchStrings = @("<>", "<>") # Update these strings as per your requirements
-
-# Output file path
-$outputFilePath = "FilePath\SearchResults.txt"
-
-# Create or clear the output file
-if (Test-Path $outputFilePath) {
-    Clear-Content $outputFilePath
-} else {
-    New-Item -ItemType File -Path $outputFilePath
-}
-
-# Iterate through each file in the folder
-Get-ChildItem -Path $folderPath -Recurse | ForEach-Object {
-    $filePath = $_.FullName10.20.0.5"
-
-    # Check if the item is a file
-    if (Test-Path $filePath -PathType Leaf) {
-        # Read the content of the file
-        $fileContent = Get-Content $filePath -Raw
-
-        # Search for each string in the current file's content
-        foreach ($searchString in $searchStrings) {
-            if ($fileContent -match [regex]::Escape($searchString)) {
-                # If found, write the result to the output file and console
-                $result = "Found '$searchString' in $filePath"
-                $result | Out-File -FilePath $outputFilePath -Append
-                Write-Host $result
+# Function to search for strings in a file
+function Search-StringsInFile {
+    param (
+        [string]$filePath,
+        [array]$strings
+    )
+    
+    $fileContent = Get-Content -Path $filePath -ErrorAction SilentlyContinue
+    if ($null -ne $fileContent) {
+        foreach ($string in $strings) {
+            if ($fileContent -match [regex]::Escape($string)) {
+                Write-Output "String '$string' found in file: $filePath"
             }
         }
     }
 }
 
-Write-Host "Search complete. Results have been written to $outputFilePath"
+# Function to search for strings in all files in a directory recursively
+function Search-StringsInDirectory {
+    param (
+        [string]$directory,
+        [array]$strings
+    )
+    
+    Get-ChildItem -Path $directory -Recurse -File | ForEach-Object {
+        Search-StringsInFile -filePath $_.FullName -strings $strings
+    }
+}
+
+# Start the search
+Search-StringsInDirectory -directory $directoryPath -strings $searchStrings
