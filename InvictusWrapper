@@ -1,0 +1,135 @@
+Import-Module .\Microsoft-Extractor-Suite.psd1
+Install-Module -Name Microsoft-Extractor-Suite
+
+# Ask for the mounted shared folder drive
+$SharedDrive = Read-Host -Prompt "Enter the drive letter for the mounted shared folder (e.g., Z:)"
+
+# Define the Evidence folder path
+$EvidencePath = "$SharedDrive\Evidence"
+
+# Create a new folder for the output
+$OutputFolder = "$EvidencePath\$(Get-Date -Format 'yyyyMMdd_HHmmss')"
+New-Item -ItemType Directory -Path $OutputFolder
+
+# Authenticate to Microsoft services
+Connect-AzureAZ 
+Connect-M365 
+Connect-Azure 
+
+
+Do {
+    # Ask the user for the collection type
+    Do {
+        $CollectionTypeInput = Read-Host -Prompt "Enter collection type:`n1 for Triage`n2 for Individual User Log Collection`n3 for IOC Search`nSelection:"
+        if ($CollectionTypeInput -eq "1") {
+            $CollectionType = "triage"
+        } elseif ($CollectionTypeInput -eq "2") {
+            $CollectionType = "individual_log"
+        } elseif ($CollectionTypeInput -eq "3") {
+            $CollectionType = "ioc_search"
+        } else {
+            Write-Host "Invalid input. Please enter 1 for Triage, 2 for Individual User Log Collection, or 3 for IOC Search." -ForegroundColor Red
+        }
+    } while ($null -eq $CollectionType)
+
+    # Perform actions based on collection type
+    if ($CollectionType -eq "triage") {
+        # Basic tenant information collection for Triage
+        Get-Users -OutputDir $OutputFolder
+        Get-AdminUsers -OutputDir $OutputFolder
+        Get-MFA -OutputDir $OutputFolder
+        Get-ConditionalAccessPolicies -OutputDir $OutputFolder
+        Get-CasMailbox -ResultSize Unlimited |
+            Select-Object PrimarySmtpAddress, ActiveSyncEnabled, OWAEnabled, OWAForDevicesEnabled, PopEnabled, ImapEnabled, MAPIEnabled |
+            Export-Csv -Path "$OutputFolder\MailClients.csv" -NoTypeInformation
+
+        # Triage-specific collections
+        Get-RiskyUsers -OutputDir $OutputFolder
+        Get-RiskyDetections -OutputDir $OutputFolder
+        Get-MailboxRules -OutputDir $OutputFolder
+        Get-TransportRules -OutputDir $OutputFolder
+
+    } elseif ($CollectionType -eq "individual_log") {
+        # Individual User Log Collection
+        Write-Host "The script will read a list of emails from a file called users.txt in the current working directory."
+        $UserListPath = "$PWD\users.txt"
+        if (-Not (Test-Path $UserListPath)) {
+            Write-Host "Error: users.txt not found in the current directory. Please ensure the file exists and try again." -ForegroundColor Red
+            exit
+        }
+
+                $Users = Get-Content -Path $UserListPath
+        foreach ($User in $Users) {
+            # Get-MailboxAuditLog
+            Get-MailboxAuditLog -UserIds $User -OutputDir $OutputFolder
+            Get-MailboxRules -UserIds $User -OutputDir $OutputFolder
+            Get-ADSignInLogs -UserIds $User -OutputDir $OutputFolder
+            Get-ADAuditLogs -UserIds $User -OutputDir $OutputFolder
+
+            # Export Mailbox Permissions
+            Get-Mailbox -ResultSize Unlimited | Get-MailboxPermission -User $User |
+                Select-Object Identity, User, AccessRights |
+                Export-Csv "$OutputFolder\${User}_MailboxAccess.csv" -NoTypeInformation
+            Get-MailboxPermission -Identity $User |
+                Select-Object Identity, User, AccessRights |
+                Export-Csv "$OutputFolder\${User}_AccessToUserAccount.csv" -NoTypeInformation
+
+            # Prompt for and validate Start/End Dates for Historical Search
+            do {
+                $StartDateInput = Read-Host "Enter start date (e.g., 2023-01-01)"
+                $EndDateInput = Read-Host "Enter end date (e.g., 2023-03-01)"
+
+                try {
+                    $StartDate = [datetime]::ParseExact($StartDateInput, 'yyyy-MM-dd', $null)
+                    $EndDate = [datetime]::ParseExact($EndDateInput, 'yyyy-MM-dd', $null)
+                } catch {
+                    Write-Host "Invalid date format. Please enter dates in YYYY-MM-DD format." -ForegroundColor Red
+                    $StartDate = $null
+                    $EndDate = $null
+                    continue
+                }
+
+                $CurrentDate = Get-Date
+
+                if ($EndDate -lt $StartDate) {
+                    Write-Host "Error: End date cannot be earlier than start date." -ForegroundColor Red
+                    $StartDate = $null
+                    $EndDate = $null
+                } elseif (($CurrentDate - $StartDate).Days -gt 90 -or ($CurrentDate - $EndDate).Days -gt 90) {
+                    Write-Host "Error: Start and end dates must be within the last 90 days." -ForegroundColor Red
+                    $StartDate = $null
+                    $EndDate = $null
+                }
+            } while (-not $StartDate -or -not $EndDate)
+
+            # Run Historical Search
+            Start-HistoricalSearch -ReportTitle "${User}_Outgoing" -ReportType MessageTrace -SenderAddress $User -StartDate $StartDate -EndDate $EndDate
+            Start-HistoricalSearch -ReportTitle "${User}_Incoming" -ReportType MessageTrace -RecipientAddress $User -StartDate $StartDate -EndDate $EndDate
+        }
+
+        
+    } elseif ($CollectionType -eq "ioc_search") {
+        # Skip tenant information collection for IOC Search
+        # Prompt user for IP or User Search
+        $IOCType = Read-Host -Prompt "Enter 1 for IP Search or 2 for User Search"
+        if ($IOCType -eq "1") {
+            # IP Search
+            $SearchName = Read-Host -Prompt "Enter the search name"
+            $IPAddress = Read-Host -Prompt "Enter the IP address to search"
+            Get-UALGraph -SearchName $SearchName -IPAddress $IPAddress -OutputDir $OutputFolder
+        } elseif ($IOCType -eq "2") {
+            # User Search
+            $SearchName = Read-Host -Prompt "Enter the search name"
+            $UserEmail = Read-Host -Prompt "Enter the user email to search"
+            Get-UALGraph -SearchName $SearchName -UserIds $UserEmail -OutputDir $OutputFolder
+        } else {
+            Write-Host "Invalid input. Please enter 1 for IP Search or 2 for User Search." -ForegroundColor Red
+        }
+    } else {
+        Write-Host "Invalid collection type. Exiting script."
+        exit
+    }
+
+    # Prompt to do another collection
+    $DoAnother = Read-Host -Prompt "Do you want to perform another collection? (yes/no)"
+} while ($DoAnother -eq "yes")
