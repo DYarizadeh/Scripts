@@ -1,6 +1,3 @@
-Import-Module .\Microsoft-Extractor-Suite.psd1
-Install-Module -Name Microsoft-Extractor-Suite
-
 # Ask for the mounted shared folder drive
 $SharedDrive = Read-Host -Prompt "Enter the drive letter for the mounted shared folder (e.g., Z:)"
 Write-Host "Shared drive set to: $SharedDrive" -ForegroundColor Green
@@ -16,9 +13,11 @@ Write-Host "Created output folder: $OutputFolder" -ForegroundColor Green
 
 # Authenticate to Microsoft services
 Write-Host "Authenticating to Microsoft services..." -ForegroundColor Yellow
+
 Connect-AzureAZ
 Connect-M365
 Connect-Azure
+
 Write-Host "Authentication complete." -ForegroundColor Green
 
 
