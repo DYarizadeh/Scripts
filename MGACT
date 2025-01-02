@@ -1,0 +1,114 @@
+#####################################
+# Microsoft Graph App Creation Tool # 
+#####################################
+
+do {
+    $ConfigureTenant = Read-Host -Prompt "Does the tenant need to be configured (Y/N)"
+
+    if ($ConfigureTenant -notmatch "^(?i)(Y|N)$") {
+        Write-Host "Invalid input. Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
+    }
+} while ($ConfigureTenant -notmatch "^(?i)(Y|N)$")
+
+if ($ConfigureTenant -ieq "Y") {
+
+    # Define the app registration details
+    $appName = "MyCustomApp"
+
+    # Log in to Azure
+    az login
+
+    # Retrieve the Tenant ID
+    $tenantId = az account show --query "tenantId" -o tsv
+
+    if (-not $tenantId) {
+        Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Using Tenant ID: $tenantId"
+
+    # Register the application
+    $app = az ad app create --display-name $appName | ConvertFrom-Json
+
+    # Extract the App ID and Object ID
+    $appId = $app.appId
+    $appObjectId = $app.id
+
+    if (-not $appId) {
+        Write-Host "Error: Failed to register the application." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "App registered with App ID: $appId"
+
+    # Generate a client secret for the app
+    #$clientSecret = az ad app credential reset --id $appId --append --only-show-errors --query "password" -o tsv
+
+    #if (-not $clientSecret) {
+    #    Write-Host "Error: Failed to generate client secret." -ForegroundColor Red
+    #    exit 1
+    #}
+
+    #Write-Host "Client secret generated successfully. Please store it securely."
+    #Write-Host "Client Secret: $clientSecret"
+
+    # Define the required API permissions and their IDs
+    $permissions = @{
+        "User.Read.All" = "df021288-bdef-4463-88db-98f22de89214";
+        "Directory.Read.All" = "7ab1d382-f21e-4acd-a863-ba3e13f7da61";
+        "UserAuthenticationMethod.Read.All" = "38d9df27-64da-44fd-b7c5-a6fbac20248f";
+        "IdentityRiskyUser.Read.All" = "dc5007c0-2d7d-4c42-879c-2dab87571379";
+        "IdentityRiskEvent.Read.All" = "6e472fd1-ad78-48da-a0f0-97ab2c6b769e";
+        "Mail.ReadWrite" = "e2a3a72e-5f79-4c64-b1b1-878b674786c9";
+        "Policy.Read.All" = "246dd0d5-5bd0-4def-940b-0421030a5b68";
+        "AuditLog.Read.All" = "b0afded3-3588-46d8-8b3d-9842eff778da"
+    }
+
+    # Get the Microsoft Graph API Service Principal ID
+    $graphApiId = az ad sp show --id "00000003-0000-0000-c000-000000000000" --query "appId" -o tsv
+
+    if (-not $graphApiId) {
+        Write-Host "Error: Unable to retrieve Microsoft Graph API Service Principal ID." -ForegroundColor Red
+        exit 1
+    }
+
+    # Assign the permissions to the app
+    foreach ($permission in $permissions.Keys) {
+        Write-Host "Adding permission: $permission"
+        try {
+            $permissionId = $permissions[$permission]
+            az ad app permission add --id $appId --api $graphApiId --api-permissions "$permissionId=Role"
+        } catch {
+            Write-Host "Error: Failed to add permission $permission." -ForegroundColor Red
+            continue
+        }
+    }
+
+    # Grant admin consent to all permissions
+    Write-Host "Granting admin consent..."
+    try {
+        az ad app permission admin-consent --id $appId
+        Start-Sleep -Seconds 3
+        az ad app permission admin-consent --id $appId
+        Start-Sleep -Seconds 3
+        az ad app permission admin-consent --id $appId
+        Start-Sleep -Seconds 3
+        az ad app permission admin-consent --id $appId
+        Write-Host "Admin consent granted successfully."
+    } catch {
+        Write-Host "Error: Failed to grant admin consent." -ForegroundColor Red
+        Write-Host "Debug Info: Verify if your account has Global Admin privileges and all permissions are valid."
+        exit 1
+    }
+
+    Write-Host "App registration and permission setup completed."
+    
+    }
+
+ else {
+
+ Write-Host "Skipping tenant configuration. Please run Wrapper.ps1"
+
+    
+        }
