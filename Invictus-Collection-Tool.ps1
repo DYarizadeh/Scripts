@@ -1,3 +1,58 @@
+#Microsoft Graph Auhentication Script
+Connect-AzAccount
+
+$tenantId = (Get-AzContext).Tenant.Id
+
+if (-not $tenantId) {
+    Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Using Tenant ID: $tenantId"
+
+$appName = "MyCustomApp"
+$app = Get-AzADApplication -DisplayName $appName  
+if (-not $app) {
+    Write-Host "Error: Unable to retrieve App for '$appName'." -ForegroundColor Red
+    exit 1
+}
+
+$appId = $app.AppId
+Write-Host "Found App ID: $appId for application '$appName'"
+
+Connect-AzureAD -TenantId $tenantId
+
+Start-Sleep -Seconds 10
+
+# Create a new password credential
+$pwdCred = New-AzureADApplicationPasswordCredential -ObjectId $app.Id
+$clientSecret = $pwdCred.Value
+
+if (-not $clientSecret) {
+    Write-Host "Error: Failed to reset client secret." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Client secret reset successfully. This is necessary for reauthentication."
+Write-Host "New Client Secret: $clientSecret"
+
+Start-Sleep -Seconds 20
+
+$ApplicationClientId     = $appId
+$ApplicationClientSecret = $clientSecret
+$SecureClientSecret      = ConvertTo-SecureString -String $clientSecret -AsPlainText -Force
+$ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
+    -ArgumentList $ApplicationClientId, $SecureClientSecret
+
+Start-Sleep -Seconds 5
+
+Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+
+
+
+
+
+########################################################################################################
+
 # Ask for the mounted shared folder drive
 $SharedDrive = Read-Host -Prompt "Enter the drive letter for the mounted shared folder (e.g., Z:)"
 Write-Host "Shared drive set to: $SharedDrive" -ForegroundColor Green
@@ -12,11 +67,24 @@ New-Item -ItemType Directory -Path $OutputFolder | Out-Null
 Write-Host "Created output folder: $OutputFolder" -ForegroundColor Green
 
 # Authenticate to Microsoft services
-Write-Host "Authenticating to Microsoft services..." -ForegroundColor Yellow
+Write-Host "Authenticating to Microsoft services..." -ForegroundColor Yellow|
 
-Connect-AzureAZ
+# Unblock all files in the directory
+Get-ChildItem -Path "$PWD" -Recurse | ForEach-Object {
+    if ($_.Attributes -match 'ReadOnly') { $_.Attributes = 'Normal' }
+    Unblock-File -Path $_.FullName
+}
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+Import-Module .\Microsoft-Extractor-Suite.psd1
+
+Start-Sleep -Seconds 3
 Connect-M365
+Start-Sleep -Seconds 3
 Connect-Azure
+Start-Sleep -Seconds 3
+
 
 Write-Host "Authentication complete." -ForegroundColor Green
 
@@ -25,7 +93,7 @@ Write-Host "Authentication complete." -ForegroundColor Green
 Do {
     # Ask the user for the collection type
     Do {
-        $CollectionTypeInput = Read-Host -Prompt "Enter collection type:`n1 for Triage Package`n2 for Comprehensive Log Collection Less Than 5000 Users`n3 for Comprehensive Log Collection Greater Than 5000 Users`n4 for Individual User Log Collection`n5 for IOC Search`nSelection:"
+        $CollectionTypeInput = Read-Host -Prompt "Enter collection type:`n1 for Triage Package`n2 for Comprehensive Log Collection Less Than 5000 Users`n3 for Comprehensive Log Collection Greater Than 5000 Users`n4 for Individual User Log Collection`n5 for IOC Search`nSelection"
         if ($CollectionTypeInput -eq "1") {
             $CollectionType = "triage"
         } elseif ($CollectionTypeInput -eq "4") {
@@ -218,11 +286,24 @@ if ($CollectionType -eq "triage") {
     Write-Host "Starting individual user log collection..." -ForegroundColor Yellow
     Write-Host "The script will read a list of emails from a file called users.txt in the current working directory."
 
-    $UserListPath = "$PWD\users.txt"
-    if (-Not (Test-Path $UserListPath)) {
-        Write-Host "Error: users.txt not found in the current directory. Please ensure the file exists and try again." -ForegroundColor Red
-        exit
-    }
+
+    while ($true) {
+        $UserListPath = Join-Path (Get-Location) "users.txt"
+    
+        if (Test-Path $UserListPath) {
+            Write-Host "`nFound users.txt at: $UserListPath"
+            break  
+                                      }
+        else {
+            Write-Host "`nError: users.txt not found in the current directory." -ForegroundColor Red
+            $userChoice = Read-Host "Press Enter after placing 'users.txt' here, or type 'Q' to quit"
+        
+            if ($userChoice -eq 'Q') {
+             Write-Host "Exiting script..."
+             exit
+                                    }
+               }
+                     }
 
     $Users = Get-Content -Path $UserListPath
     foreach ($User in $Users) {
@@ -328,5 +409,13 @@ if ($CollectionType -eq "triage") {
 
 
     # Prompt to do another collection
-    $DoAnother = Read-Host -Prompt "Do you want to perform another collection? (yes/no)"
+do {
+        $DoAnother = Read-Host -Prompt "Do you want to perform another collection? (yes/no)"
+            
+        if ($DoAnother.ToLower() -ne "yes" -and $DoAnother.ToLower() -ne "no") {
+            Write-Host "Invalid input. Please enter 'yes' or 'no'." -ForegroundColor Red
+                                                                                }
+    } while ($DoAnother.ToLower() -ne "yes" -and $DoAnother.ToLower() -ne "no")
+
+    Write-Host "User selected to perform another collection: $DoAnother" -ForegroundColor Cyan
 } while ($DoAnother -eq "yes")
