@@ -1,61 +1,89 @@
-#####################################
-# Microsoft Graph App Creation Tool # 
-#####################################
+# --------------------------------------------------------------------------
+# App Creation 
+# --------------------------------------------------------------------------
 
-do {
-    $ConfigureTenant = Read-Host -Prompt "Does the tenant need to be configured (Y/N)"
+# --------------------------------------------------------------------------
+# Ensure no previous Microsoft Graph connections are active
+# --------------------------------------------------------------------------
+$existingContext = Get-MgContext
+if ($existingContext -and $existingContext.Account) {
+    Write-Host "Disconnecting previously established Microsoft Graph session..."
+    Disconnect-MgGraph
+} else {
+    Write-Host "No existing Microsoft Graph session found."
+}
 
-    if ($ConfigureTenant -notmatch "^(?i)(Y|N)$") {
-        Write-Host "Invalid input. Please enter 'Y' for Yes or 'N' for No." -ForegroundColor Red
-    }
-} while ($ConfigureTenant -notmatch "^(?i)(Y|N)$")
+# --------------------------------------------------------------------------
+# Step 1: Connect to Microsoft Graph
+# --------------------------------------------------------------------------
+Write-Host "Establishing a new Microsoft Graph session..."
 
-if ($ConfigureTenant -ieq "Y") {
+# Make sure you have installed Microsoft Graph PowerShell
+#   Install-Module Microsoft.Graph -Scope CurrentUser
+# You need permissions to manage AAD apps, e.g.:
+#   Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All","Directory.ReadWrite.All"
+Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All","Directory.ReadWrite.All"
 
-    # Define the app registration details
-    $appName = "MyCustomApp"
+# Get details about the signed-in user/tenant
+$tenant = Get-MgOrganization
+$tenantId = $tenant.Id
+if (-not $tenantId) {
+    Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
+    return
+}
+Write-Host "Using Tenant ID: $tenantId"
 
-    # Log in to Azure
-    az login
+# Define your application’s display name
+$appName = "Kroll BEC Tool"   # <-- Replace or parameterize as needed
 
-    # Retrieve the Tenant ID
-    $tenantId = az account show --query "tenantId" -o tsv
+# --------------------------------------------------------------------------
+# (NEW) Step 1.5: Check if the application already exists
+# --------------------------------------------------------------------------
+Write-Host "Checking if application '$appName' already exists..."
+$existingApp = Get-MgApplication -Filter "DisplayName eq 'Kroll BEC Tool'"
 
-    if (-not $tenantId) {
-        Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
-        exit 1
-    }
+if ($existingApp -ne $null) {
+    # If the filter returns any results, the app already exists
+    Write-Host "Application '$appName' already exists in this tenant."
+    Write-Host "Skipping creation process..."
+}
 
-    Write-Host "Using Tenant ID: $tenantId"
+else {
 
-    # Register the application
-    $app = az ad app create --display-name $appName | ConvertFrom-Json
+# --------------------------------------------------------------------------
+# Step 2: Create (register) the Azure AD application
+# --------------------------------------------------------------------------
+Write-Host "Creating a new application with name: $appName ..."
+$app = New-MgApplication -DisplayName $appName -SignInAudience "AzureADMyOrg"
 
-    # Extract the App ID and Object ID
-    $appId = $app.appId
-    $appObjectId = $app.id
+if (-not $app.AppId) {
+    Write-Host "Error: Failed to register the application." -ForegroundColor Red
+    return
+}
 
-    if (-not $appId) {
-        Write-Host "Error: Failed to register the application." -ForegroundColor Red
-        exit 1
-    }
+$appId       = $app.AppId    # The "client" or "application" ID
+$appObjectId = $app.Id       # The internal object ID in AAD
 
-    Write-Host "App registered with App ID: $appId"
+Write-Host "App registered with App ID: $appId"
 
-    # Generate a client secret for the app
-    #$clientSecret = az ad app credential reset --id $appId --append --only-show-errors --query "password" -o tsv
+# --------------------------------------------------------------------------
+# (Optional) Step 3: Create a client secret for the application
+# --------------------------------------------------------------------------
+$secret = Add-MgApplicationPassword -ApplicationId $appObjectId
+if (-not $secret.SecretText) {
+    Write-Host "Error: Failed to generate client secret." -ForegroundColor Red
+    return
+}
+Write-Host "Client secret generated successfully. Please store it securely."
+Write-Host "Client Secret: $($secret.SecretText)"
 
-    #if (-not $clientSecret) {
-    #    Write-Host "Error: Failed to generate client secret." -ForegroundColor Red
-    #    exit 1
-    #}
-
-    #Write-Host "Client secret generated successfully. Please store it securely."
-    #Write-Host "Client Secret: $clientSecret"
-
-    # Define the required API permissions and their IDs
-    $permissions = @{
-	"AuditLog.Read.All" = "b0afded3-3588-46d8-8b3d-9842eff778da";
+# --------------------------------------------------------------------------
+# Step 4: Define the required Graph API permissions (as Application Roles)
+# --------------------------------------------------------------------------
+$permissions = @{
+	    "AuditLog.Read.All" = "b0afded3-3588-46d8-8b3d-9842eff778da";
+        "User.Read.All" = "dc5007c0-2d7d-4c42-879c-2dab87571379";
+        "UserAuthenticationMethod.Read.All" = "38d9df27-64da-44fd-b7c5-a6fbac20248f";
         "Directory.Read.All" = "7ab1d382-f21e-4acd-a863-ba3e13f7da61";
         "IdentityRiskyUser.Read.All" = "dc5007c0-2d7d-4c42-879c-2dab87571379";
         "SecurityEvents.Read.All" = "bf394140-e372-4bf9-a898-299cfc7564e5";
@@ -71,52 +99,154 @@ if ($ConfigureTenant -ieq "Y") {
         "Sites.Read.All" = "332a536c-c7ef-4017-ab91-336970924f0d";
         "AuditLogsQuery.Read.All" = "5e1e9171-754d-478c-812c-f1755a9a4c2d";
         "IdentityRiskyServicePrincipal.Read.All" = "607c7344-0eed-41e5-823a-9695ebe1b7b0"
+}
+
+Write-Host "Building the required resource access array..."
+$resourceAccessList = @()
+foreach ($perm in $permissions.GetEnumerator()) {
+    Write-Host "  Adding permission: $($perm.Key)"
+    $resourceAccessList += @{
+        Id   = $perm.Value
+        Type = "Role"   # "Role" for application permissions, "Scope" for delegated
     }
+}
 
-    # Get the Microsoft Graph API Service Principal ID
-    $graphApiId = az ad sp show --id "00000003-0000-0000-c000-000000000000" --query "appId" -o tsv
-
-    if (-not $graphApiId) {
-        Write-Host "Error: Unable to retrieve Microsoft Graph API Service Principal ID." -ForegroundColor Red
-        exit 1
+# Create a RequiredResourceAccess object for Microsoft Graph (appId = 00000003-0000-0000-c000-000000000000)
+$graphRequiredResourceAccess = @(
+    @{
+        ResourceAppId  = "00000003-0000-0000-c000-000000000000"
+        ResourceAccess = $resourceAccessList
     }
+)
 
-    # Assign the permissions to the app
-    foreach ($permission in $permissions.Keys) {
-        Write-Host "Adding permission: $permission"
-        try {
-            $permissionId = $permissions[$permission]
-            az ad app permission add --id $appId --api $graphApiId --api-permissions "$permissionId=Role"
-        } catch {
-            Write-Host "Error: Failed to add permission $permission." -ForegroundColor Red
-            continue
-        }
-    }
+# --------------------------------------------------------------------------
+# Step 5: Update the application with the new RequiredResourceAccess
+# --------------------------------------------------------------------------
+Write-Host "Updating the application with required resource access..."
+Update-MgApplication -ApplicationId $appObjectId -RequiredResourceAccess $graphRequiredResourceAccess
 
-    # Grant admin consent to all permissions
-    Write-Host "Granting admin consent..."
+# --------------------------------------------------------------------------
+# Step 6: Create a Service Principal for the new application
+# --------------------------------------------------------------------------
+Write-Host "Creating a Service Principal for the new application..."
+$sp = New-MgServicePrincipal -AppId $appId
+if (-not $sp.Id) {
+    Write-Host "Error: Failed to create Service Principal." -ForegroundColor Red
+    return
+}
+
+Write-Host "Service Principal created with ID: $($sp.Id)"
+
+# --------------------------------------------------------------------------
+# Step 7: Grant Admin Consent via App Role Assignments
+# --------------------------------------------------------------------------
+Write-Host "Granting admin consent (App Role Assignments) for each permission..."
+
+$graphSp = Get-MgServicePrincipal -Filter "AppId eq '00000003-0000-0000-c000-000000000000'"
+if (-not $graphSp.Id) {
+    Write-Host "Error: Unable to retrieve Microsoft Graph Service Principal." -ForegroundColor Red
+    return
+}
+
+foreach ($permId in $permissions.Values) {
     try {
-        az ad app permission admin-consent --id $appId
-        Start-Sleep -Seconds 3
-        az ad app permission admin-consent --id $appId
-        Start-Sleep -Seconds 3
-        az ad app permission admin-consent --id $appId
-        Start-Sleep -Seconds 3
-        az ad app permission admin-consent --id $appId
-        Write-Host "Admin consent granted successfully."
-    } catch {
-        Write-Host "Error: Failed to grant admin consent." -ForegroundColor Red
-        Write-Host "Debug Info: Verify if your account has Global Admin privileges and all permissions are valid."
-        exit 1
+        New-MgServicePrincipalAppRoleAssignment `
+            -ServicePrincipalId $sp.Id `
+            -PrincipalId        $sp.Id `
+            -ResourceId         $graphSp.Id `
+            -AppRoleId          $permId
+
+        Write-Host "  Admin consent granted for permission ID: $permId"
     }
-
-    Write-Host "App registration and permission setup completed."
-    
+    catch {
+        Write-Host "Error: Failed to assign role $permId" -ForegroundColor Red
     }
+}
 
- else {
+Write-Host "`nAdmin consent granted successfully (assuming you have Global Admin privileges)."
+Write-Host "App registration and permission setup completed."
 
- Write-Host "Skipping tenant configuration. Please run Wrapper.ps1"
+}
 
-    
-        }
+
+# --------------------------------------------------------------------------
+#Microsoft Graph Auhentication Script
+# --------------------------------------------------------------------------
+Connect-AzAccount
+
+$tenantId = (Get-AzContext).Tenant.Id
+
+if (-not $tenantId) {
+    Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
+    exit 1
+}
+Write-Host "Using Tenant ID: $tenantId"
+
+
+$app = Get-AzADApplication -DisplayName "Kroll BEC Tool" 
+if (-not $app) {
+    Write-Host "Error: Unable to retrieve App for '$appName'." -ForegroundColor Red
+    exit 1
+}
+
+$appId = $app.AppId
+Write-Host "Found App ID: $appId for application 'Kroll BEC To'"
+
+if ($secret -eq $null) { 
+
+
+Connect-AzureAD -TenantId $tenantId
+
+Start-Sleep -Seconds 10
+
+# Create a new password credential
+$pwdCred = New-AzureADApplicationPasswordCredential -ObjectId $app.Id
+$clientSecret = $pwdCred.Value
+
+if (-not $clientSecret) {
+    Write-Host "Error: Failed to reset client secret." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Client secret reset successfully. This is necessary for reauthentication."
+Write-Host "New Client Secret: $clientSecret"
+
+Start-Sleep -Seconds 20
+
+$ApplicationClientId     = $appId
+$ApplicationClientSecret = $clientSecret
+$SecureClientSecret      = ConvertTo-SecureString -String $clientSecret -AsPlainText -Force
+$ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
+    -ArgumentList $ApplicationClientId, $SecureClientSecret
+
+Start-Sleep -Seconds 3
+
+Write-Host "Authenticating.." 
+Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+Start-Sleep -Seconds 3
+Connect-M365
+Start-Sleep -Seconds 3
+Write-Host "Authentication complete." -ForegroundColor Green
+
+}
+
+else {
+
+$ApplicationClientId     = $appId
+$ApplicationClientSecret = $Secret.SecretText
+$SecureClientSecret      = ConvertTo-SecureString -String $Secret.SecretText -AsPlainText -Force
+$ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
+    -ArgumentList $ApplicationClientId, $SecureClientSecret
+
+Start-Sleep -Seconds 3
+
+Write-Host "Authenticating.." 
+Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+Start-Sleep -Seconds 3
+Connect-Azure
+Start-Sleep -Seconds 3
+Connect-M365
+Start-Sleep -Seconds 3
+Write-Host "Authentication complete." -ForegroundColor Green
+
+}
