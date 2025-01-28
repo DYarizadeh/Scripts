@@ -1,6 +1,9 @@
 # --------------------------------------------------------------------------
-# App Creation 
+# Microsoft Graph App Creation Tool (MGACT) 
 # --------------------------------------------------------------------------
+
+# WARNING: Execution policy must be set to RemoteSigned in order to reliably authenticate to Azure. Policies beyond Unrestricted 
+# and RemoteSigned haved not been tested.
 
 # --------------------------------------------------------------------------
 # Ensure no previous Microsoft Graph connections are active
@@ -37,7 +40,7 @@ Write-Host "Using Tenant ID: $tenantId"
 $appName = "Kroll BEC Tool"   # <-- Replace or parameterize as needed
 
 # --------------------------------------------------------------------------
-# (NEW) Step 1.5: Check if the application already exists
+# Step 1.5: Check if the application already exists
 # --------------------------------------------------------------------------
 Write-Host "Checking if application '$appName' already exists..."
 $existingApp = Get-MgApplication -Filter "DisplayName eq 'Kroll BEC Tool'"
@@ -67,7 +70,7 @@ $appObjectId = $app.Id       # The internal object ID in AAD
 Write-Host "App registered with App ID: $appId"
 
 # --------------------------------------------------------------------------
-# (Optional) Step 3: Create a client secret for the application
+#Step 3: Create a client secret for the application
 # --------------------------------------------------------------------------
 $secret = Add-MgApplicationPassword -ApplicationId $appObjectId
 if (-not $secret.SecretText) {
@@ -174,79 +177,76 @@ Write-Host "App registration and permission setup completed."
 # --------------------------------------------------------------------------
 Connect-AzAccount
 
-$tenantId = (Get-AzContext).Tenant.Id
-
-if (-not $tenantId) {
-    Write-Host "Error: Unable to retrieve Tenant ID." -ForegroundColor Red
-    exit 1
-}
 Write-Host "Using Tenant ID: $tenantId"
 
-
-$app = Get-AzADApplication -DisplayName "Kroll BEC Tool" 
+$app = Get-MgApplication -Filter "DisplayName eq 'Kroll BEC Tool'"
 if (-not $app) {
     Write-Host "Error: Unable to retrieve App for '$appName'." -ForegroundColor Red
     exit 1
 }
 
 $appId = $app.AppId
-Write-Host "Found App ID: $appId for application 'Kroll BEC To'"
-
-if ($secret -eq $null) { 
-
-
-Connect-AzureAD -TenantId $tenantId
-
-Start-Sleep -Seconds 10
-
-# Create a new password credential
-$pwdCred = New-AzureADApplicationPasswordCredential -ObjectId $app.Id
-$clientSecret = $pwdCred.Value
-
-if (-not $clientSecret) {
-    Write-Host "Error: Failed to reset client secret." -ForegroundColor Red
+if (-not $appId) {
+    Write-Host "Error: Unable to retrieve AppID for '$appName'." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "Client secret reset successfully. This is necessary for reauthentication."
-Write-Host "New Client Secret: $clientSecret"
+Write-Host "Found App ID: $appId for application 'Kroll BEC Tool'"
 
-Start-Sleep -Seconds 20
+if ($secret -eq $null) { 
 
-$ApplicationClientId     = $appId
-$ApplicationClientSecret = $clientSecret
-$SecureClientSecret      = ConvertTo-SecureString -String $clientSecret -AsPlainText -Force
-$ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
-    -ArgumentList $ApplicationClientId, $SecureClientSecret
+    Connect-AzureAD -TenantId $tenantId
 
-Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 10
 
-Write-Host "Authenticating.." 
-Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
-Start-Sleep -Seconds 3
-Connect-M365
-Start-Sleep -Seconds 3
-Write-Host "Authentication complete." -ForegroundColor Green
+    # Create a new password credential
+    $pwdCred = New-AzureADApplicationPasswordCredential -ObjectId $app.Id
+    $clientSecret = $pwdCred.Value
+
+    if (-not $clientSecret) {
+        Write-Host "Error: Failed to reset client secret." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Client secret reset successfully. This is necessary for reauthentication."
+    Write-Host "New Client Secret: $clientSecret"
+
+    Start-Sleep -Seconds 20
+
+    $ApplicationClientId     = $appId
+    $ApplicationClientSecret = $clientSecret
+    $SecureClientSecret      = ConvertTo-SecureString -String $clientSecret -AsPlainText -Force
+    $ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
+        -ArgumentList $ApplicationClientId, $SecureClientSecret
+
+    Start-Sleep -Seconds 3
+
+    Write-Host "Authenticating.." 
+    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+    Start-Sleep -Seconds 3
+    Connect-M365
+    Start-Sleep -Seconds 3
+    Write-Host "Authentication complete." -ForegroundColor Green
 
 }
 
 else {
 
-$ApplicationClientId     = $appId
-$ApplicationClientSecret = $Secret.SecretText
-$SecureClientSecret      = ConvertTo-SecureString -String $Secret.SecretText -AsPlainText -Force
-$ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
-    -ArgumentList $ApplicationClientId, $SecureClientSecret
+    $ApplicationClientId     = $appId
+    $ApplicationClientSecret = $Secret.SecretText
+    $SecureClientSecret      = ConvertTo-SecureString -String $Secret.SecretText -AsPlainText -Force
+    $ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
+        -ArgumentList $ApplicationClientId, $SecureClientSecret
 
-Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 3
 
-Write-Host "Authenticating.." 
-Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
-Start-Sleep -Seconds 3
-Connect-Azure
-Start-Sleep -Seconds 3
-Connect-M365
-Start-Sleep -Seconds 3
-Write-Host "Authentication complete." -ForegroundColor Green
+    Write-Host "Authenticating.." 
+    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+    Start-Sleep -Seconds 3
+    Connect-Azure
+    Start-Sleep -Seconds 3
+    Connect-M365
+    Start-Sleep -Seconds 3
+    Write-Host "Authentication complete." -ForegroundColor Green
 
 }
