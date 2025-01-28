@@ -37,13 +37,13 @@ if (-not $tenantId) {
 Write-Host "Using Tenant ID: $tenantId"
 
 # Define your application’s display name
-$appName = "Kroll BEC Tool"   # <-- Replace or parameterize as needed
+$appName = "BECAuthTool"   # <-- Replace or parameterize as needed
 
 # --------------------------------------------------------------------------
 # Step 1.5: Check if the application already exists
 # --------------------------------------------------------------------------
 Write-Host "Checking if application '$appName' already exists..."
-$existingApp = Get-MgApplication -Filter "DisplayName eq 'Kroll BEC Tool'"
+$existingApp = Get-MgApplication -Filter "DisplayName eq 'BECAuthTool'"
 
 if ($existingApp -ne $null) {
     # If the filter returns any results, the app already exists
@@ -179,7 +179,7 @@ Connect-AzAccount
 
 Write-Host "Using Tenant ID: $tenantId"
 
-$app = Get-MgApplication -Filter "DisplayName eq 'Kroll BEC Tool'"
+$app = Get-MgApplication -Filter "DisplayName eq 'BECAuthTool'"
 if (-not $app) {
     Write-Host "Error: Unable to retrieve App for '$appName'." -ForegroundColor Red
     exit 1
@@ -191,7 +191,7 @@ if (-not $appId) {
     exit 1
 }
 
-Write-Host "Found App ID: $appId for application 'Kroll BEC Tool'"
+Write-Host "Found App ID: $appId for application 'BECAuthTool'"
 
 if ($secret -eq $null) { 
 
