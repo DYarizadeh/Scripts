@@ -4,8 +4,11 @@
 # Ensure no previous Microsoft Graph connections are active
 # --------------------------------------------------------------------------
 
+$ErrorActionPreference="stop"
+
 Write-Host "Disconnecting any potentialy previously established Microsoft Graph session..."
-Disconnect-MgGraph
+#Disconnect-AzAccount -ErrorAction SilentlyContinue | Out-Null
+Disconnect-MGGraph -ErrorAction SilentlyContinue | Out-Null
 
 # --------------------------------------------------------------------------
 # Step 1: Connect to Microsoft Graph
@@ -16,7 +19,7 @@ Write-Host "Establishing a new Microsoft Graph session..."
 #   Install-Module Microsoft.Graph -Scope CurrentUser
 # You need permissions to manage AAD apps, e.g.:
 #   Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All","Directory.ReadWrite.All"
-Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All","Directory.ReadWrite.All"
+Connect-MgGraph -Scopes "Application.ReadWrite.All","AppRoleAssignment.ReadWrite.All","Directory.ReadWrite.All" -NoWelcome -ContextScope Process
 
 # Get details about the signed-in user/tenant
 $tenant = Get-MgOrganization
@@ -27,7 +30,7 @@ if (-not $tenantId) {
 }
 Write-Host "Using Tenant ID: $tenantId"
 
-# Define your application’s display name
+# Define your applications display name
 $appName = "Kroll Log Collector"   # <-- Replace or parameterize as needed
 
 # --------------------------------------------------------------------------
@@ -169,7 +172,9 @@ Write-Host "App registration and permission setup completed."
 # --------------------------------------------------------------------------
 #Microsoft Graph Auhentication Script
 # --------------------------------------------------------------------------
-Connect-AzAccount
+#Disconnect-AzAccount -ErrorAction SilentlyContinue
+#Clear-AzContext -Force -ErrorAction SilentlyContinue
+#Connect-AzAccount
 
 Write-Host "Using Tenant ID: $tenantId"
 
@@ -188,7 +193,7 @@ if (-not $appId) {
 Write-Host "Found App ID: $appId for application 'Kroll Log Collector'"
 
 if ($secret -eq $null) { 
-
+    try{Disconnect-AzureAD -ErrorAction SilentlyContinue}catch{}
     Connect-AzureAD -TenantId $tenantId
 
     Start-Sleep -Seconds 5
@@ -202,7 +207,7 @@ if ($secret -eq $null) {
         exit 1
     }
 
-    Write-Host "Client secret reset successfully. This is necessary for reauthentication."
+    Write-Host "Client secret reset successfully. This is necessary for reauthentication. Waiting One Minute to ensure the secret is active"
     Write-Host "New Client Secret: $clientSecret"
 
     Start-Sleep -Seconds 10
@@ -213,11 +218,13 @@ if ($secret -eq $null) {
     $ClientSecretCredential  = New-Object -TypeName System.Management.Automation.PSCredential `
         -ArgumentList $ApplicationClientId, $SecureClientSecret
 
-    Start-Sleep -Seconds 3
+    Start-Sleep -Seconds 10
 
     Write-Host "Authenticating.." 
-    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+    Disconnect-MGGraph -ErrorAction SilentlyContinue | Out-Null
+    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential -NoWelcome -ContextScope Process
     Start-Sleep -Seconds 3
+    Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
     Connect-M365
     Start-Sleep -Seconds 3
     Write-Host "Authentication complete." -ForegroundColor Green
@@ -235,10 +242,13 @@ else {
     Start-Sleep -Seconds 3
 
     Write-Host "Authenticating.." 
-    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential
+    Disconnect-MGGraph -ErrorAction SilentlyContinue | Out-Null
+    Connect-MgGraph -TenantId $tenantId -ClientSecretCredential $ClientSecretCredential -NoWelcome -ContextScope Process
     Start-Sleep -Seconds 3
+    try{Disconnect-AzureAD -ErrorAction SilentlyContinue}catch{}
     Connect-Azure
     Start-Sleep -Seconds 3
+    Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
     Connect-M365
     Start-Sleep -Seconds 3
     Write-Host "Authentication complete." -ForegroundColor Green
