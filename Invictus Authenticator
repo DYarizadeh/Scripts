@@ -31,13 +31,13 @@ if (-not $tenantId) {
 Write-Host "Using Tenant ID: $tenantId"
 
 # Define your applications display name
-$appName = "Kroll Log Collector"   # <-- Replace or parameterize as needed
+$appName = "Invictus Log Collector"   # <-- Replace or parameterize as needed
 
 # --------------------------------------------------------------------------
 # Step 1.5: Check if the application already exists
 # --------------------------------------------------------------------------
 Write-Host "Checking if application '$appName' already exists..."
-$existingApp = Get-MgApplication -Filter "DisplayName eq 'Kroll Log Collector'"
+$existingApp = Get-MgApplication -Filter "DisplayName eq 'Invictus Log Collector'"
 
 if ($existingApp -ne $null) {
     # If the filter returns any results, the app already exists
@@ -178,7 +178,7 @@ Write-Host "App registration and permission setup completed."
 
 Write-Host "Using Tenant ID: $tenantId"
 
-$app = Get-MgApplication -Filter "DisplayName eq 'Kroll Log Collector'"
+$app = Get-MgApplication -Filter "DisplayName eq 'Invictus Log Collector'"
 if (-not $app) {
     Write-Host "Error: Unable to retrieve App for '$appName'." -ForegroundColor Red
     exit 1
@@ -190,7 +190,7 @@ if (-not $appId) {
     exit 1
 }
 
-Write-Host "Found App ID: $appId for application 'Kroll Log Collector'"
+Write-Host "Found App ID: $appId for application 'Invictus Log Collector'"
 
 if ($secret -eq $null) { 
     try{Disconnect-AzureAD -ErrorAction SilentlyContinue}catch{}
